@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/online.js') }}"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="bg-gray-100" data-user-id="{{user.id}}">
+    <div class="flex h-screen">
+        <!-- Sidebar Chats -->
+        <div class="w-1/4 bg-white border-r border-gray-200">
+            <!-- Header -->
+            <div class="bg-gray-100 p-4 flex justify-between items-center">
+                <div class="flex items-center">
+                    <img src="/static/uploads/{{ user.avatar or 'default.png' }}" alt="Profile" class="rounded-full w-12 h-12">
+                    <span class="ml-3 font-semibold">{{ user.name }}</span>
+                </div>
+                <div class="flex space-x-4">
+                    <button class="text-gray-600 hover:text-gray-800" onclick="openNewChatModal()">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <form action="/logout" method="GET" class="inline">
+                        <button type="submit" class="text-gray-600 hover:text-gray-800">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </form>
+                    <button class="text-gray-600 hover:text-gray-800" id="updateProfileBtn">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search -->
+            <div class="p-3">
+                <input type="text" id="busqueda" placeholder="Buscar o iniciar un chat" 
+                    class="w-full p-2 bg-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+            </div>
+
+            <!-- Chat List -->
+            <div class="overflow-y-auto h-[calc(100vh-150px)]">
+                {% for chat in chats %}
+                <div id="chatsContainer" class="chat-item flex p-3 hover:bg-gray-100 cursor-pointer border-b" data-chat-id="{{ chat.id }}">
+                    <div class="relative">
+                        {% if chat.is_group %}
+                            <div class="relative w-12 h-12">
+                                <!-- Group avatar collage -->
+                                <div class="grid grid-cols-2 gap-0.5">
+                                    {% for participant in chat.group_info.participants[:4] %}
+                                    <img src="/static/uploads/{{ participant.avatar or 'default.png' }}" 
+                                         class="w-5 h-5 rounded-sm object-cover">
+                                    {% endfor %}
+                                </div>
+                                <span class="absolute -bottom-1 -right-1 bg-gray-200 rounded-full text-xs px-1">
+                                    {{ chat.group_info.participant_count }}
+                                </span>
+                            </div>
+                        {% else %}
+                            <img src="/static/uploads/{{ chat.other_user.avatar or 'default.png' }}" 
+                                 class="rounded-full w-12 h-12 mr-3">
+                            <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full 
+                                       {% if chat.other_user.is_online %}bg-green-500{% else %}bg-gray-400{% endif %}">
+                            </span>
+                        {% endif %}
+                    </div>
+                    
+                    <div class="flex-1 ml-3">
+                        <div class="flex justify-between">
+                            <h3 class="font-semibold">{{ chat.name }}</h3>
+                            <span class="text-xs text-gray-500">
+                                {% if chat.messages %}{{ chat.messages[-1].timestamp.strftime('%H:%M') }}{% endif %}
+                            </span>
+                        </div>
+                        {% if chat.is_group %}
+                            <p class="text-xs text-gray-500">{{ chat.group_info.participant_count }} participants</p>
+                        {% endif %}
+                        <p class="text-sm text-gray-500 truncate">
+                            {% if chat.messages %}
+                                {% if chat.is_group %}
+                                    <span class="font-medium">{{ chat.messages[-1].user.name }}:</span>
+                                {% endif %}
+                                {{ chat.messages[-1].content }}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        <!-- Chat Window -->
+        <div class="flex-1 flex flex-col">
+            <!-- Chat Header -->
+            <div class="bg-white p-4 flex items-center justify-between border-b">
+                <div id="chatHeaderInfo" class="flex items-center space-x-4">
+                    <div class="relative">
+                        {% if active_chat %}
+                            {% if active_chat.is_group and active_chat.group_info %}
+                                <div class="relative w-12 h-12">
+                                    <div class="grid grid-cols-2 gap-0.5">
+                                        {% for participant in active_chat.group_info.participants[:4] %}
+                                        <img src="/static/uploads/{{ participant.avatar or 'default.png' }}" 
+                                             class="w-5 h-5 rounded-sm object-cover">
+                                        {% endfor %}
+                                    </div>
+                                    <span class="absolute -bottom-1 -right-1 bg-gray-200 rounded-full text-xs px-1">
+                                        {{ active_chat.group_info.participant_count }}
+                                    </span>
+                                </div>
+                            {% elif active_chat.other_user %}
+                                <img id="currentChatAvatar" 
+                                     src="/static/uploads/{{ active_chat.other_user.avatar or 'default.png' }}" 
+                                     alt="Chat" 
+                                     class="w-12 h-12 rounded-full object-cover">
+                                <span class="absolute bottom-0 right-0 w-3 h-3 rounded-full 
+                                           {% if active_chat.other_user.is_online %}bg-green-500{% else %}bg-gray-400{% endif %}">
+                                </span>
+                            {% else %}
+                                <img src="/static/uploads/default.png" 
+                                     alt="Default" 
+                                     class="w-12 h-12 rounded-full object-cover">
+                            {% endif %}
+                        {% else %}
+                            <img src="/static/uploads/default.png" 
+                                 alt="Default" 
+                                 class="w-12 h-12 rounded-full object-cover">
+                        {% endif %}
+                    </div>
+                    <div>
+                        <h2 id="currentChatName" class="font-bold">
+                            {{ active_chat.name if active_chat else 'Selecciona un chat' }}
+                        </h2>
+                        <p id="currentChatStatus" class="text-sm text-gray-600">
+                            {% if active_chat %}
+                                {% if active_chat.is_group and active_chat.group_info %}
+                                    {{ active_chat.group_info.participant_count }} participantes
+                                {% elif active_chat.other_user %}
+                                    {% if active_chat.other_user.is_online %}En línea{% else %}Desconectado{% endif %}
+                                {% else %}
+                                    Estado desconocido
+                                {% endif %}
+                            {% else %}
+                                No hay chat activo
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button class="text-gray-600 hover:text-gray-800" id="chatInfoBtn">
+                        <i class="fas fa-info-circle"></i>
+                    </button>
+                    <button class="text-gray-600 hover:text-gray-800" id="deleteChatBtn">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="flex-1 overflow-y-auto p-4 bg-gray-50" id="messagesContainer">
+                {% if not active_chat %}
+                <div class="h-full flex flex-col items-center justify-center text-gray-500">
+                    <div class="text-6xl mb-4">💭</div> <!---->
+                    <p class="text-xl">Selecciona un chat para comenzar</p>
+                </div>
+                {% else %}
+                    {% for msg in messages %}
+                        {% if msg.user_id == user.id %}
+                            <div class="flex justify-end my-2">
+                                <div class="bg-green-100 p-2 rounded-lg max-w-md">
+                                    <p>{{ msg.content }}</p>
+                                    <span class="text-xs text-gray-500 block text-right">
+                                        {{ msg.timestamp.strftime('%H:%M') }}
+                                    </span>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="flex justify-start my-2">
+                                <div class="bg-white p-2 rounded-lg max-w-md">
+                                    <p>{{ msg.content }}</p>
+                                    <span class="text-xs text-gray-500 block text-right">
+                                        {{ msg.timestamp.strftime('%H:%M') }}
+                                    </span>
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <!-- Message Input -->
+            <div class="bg-white p-4 border-t">
+                <form id="messageForm" class="flex items-center">
+                    <input type="text" id="messageInput" placeholder="Escribe un mensaje" 
+                           class="flex-1 p-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500">
+                    <button type="submit" class="ml-3 bg-green-500 text-white p-2 rounded-full hover:bg-green-600">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Profile Update Modal -->
+    <div id="profileModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+        <div class="bg-white p-6 rounded-lg w-96">
+            <h3 class="text-lg font-semibold mb-4">Actualizar Perfil</h3>
+            <form  action="/subir_imagen" method="POST" enctype="multipart/form-data" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Imagen de perfil</label>
+                    <input type="file" name="file" accept="image/*" class="mt-1 block w-full">
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button type="button" class="px-4 py-2 border rounded-lg" onclick="closeProfileModal()">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-green-500 text-white rounded-lg">
+                        Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="newChatModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+        <div class="bg-white p-6 rounded-lg w-96">
+            <h3 class="text-lg font-semibold mb-4">Crear Nuevo Chat</h3>
+            <form id="newChatForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Nombre del Chat</label>
+                    <input type="text" id="chatName" class="mt-1 block w-full border rounded-md p-2">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Seleccionar Usuarios</label>
+                    <select id="userId" multiple class="mt-1 block w-full border rounded-md p-2 h-32">
+                        {% for other_user in users if other_user.id != user.id %}
+                            <option value="{{ other_user.id }}">{{ other_user.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="text-sm text-gray-500 mt-1">Mantén presionado Ctrl/Cmd para seleccionar múltiples usuarios</p>
+                </div>
+                <div class="flex justify-end space-x-3"></div>
+                    <button type="button" class="px-4 py-2 border rounded-lg" onclick="closeNewChatModal()">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-4 py-2 bg-green-500 text-white rounded-lg">
+                        Crear
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+</body>
+</html>
